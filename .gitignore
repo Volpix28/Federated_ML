@@ -1,0 +1,15 @@
+# IDEs
+.idea/
+.vscode/
+
+# Environments
+.venv/
+env/
+venv/
+
+# Python cache
+__pycache__
+
+# Datasets
+dataset
+
