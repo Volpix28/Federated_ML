@@ -2,7 +2,7 @@ import numpy as np
 import copy
 import model as my_model
 import torch
-
+import matplotlib.pyplot as plt
 
 def create_new_model():
     # Implement model creation logic
@@ -31,3 +31,36 @@ def get_model_weights(model):
 def set_model_weights(model, weights):
     # Set model weights
     model.set_weights(weights)
+
+def visualize_federated_learning_performance(cycles, average_train_accuracies, average_train_losses):
+    """
+    Visualize the performance of the federated learning model over the cycles.
+    
+    :param cycles: Number of federated learning cycles
+    :param average_train_accuracies: List of average training accuracies per cycle
+    :param average_train_losses: List of average training losses per cycle
+    """
+    
+    # Plot Training Loss and Accuracy
+    plt.figure(figsize=(12, 5))
+
+    # Plot average training accuracy
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, cycles + 1), average_train_accuracies, marker='o', color='b', label='Average Training Accuracy')
+    plt.title('Average Training Accuracy per Cycle')
+    plt.xlabel('Cycle')
+    plt.ylabel('Accuracy')
+    plt.grid(True)
+    plt.legend()
+
+    # Plot average training loss
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, cycles + 1), average_train_losses, marker='o', color='r', label='Average Training Loss')
+    plt.title('Average Training Loss per Cycle')
+    plt.xlabel('Cycle')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
