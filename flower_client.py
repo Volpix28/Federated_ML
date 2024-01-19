@@ -5,36 +5,64 @@ import flwr as fl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.transforms import Compose, ToTensor, Normalize
+from torchvision import datasets, models, transforms
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
+from collections import OrderedDict
+
+# Import Intel extension for pytorch for Intel GPUs
+try:
+    import intel_extension_for_pytorch as ipex
+except ImportError:
+    pass
+
+def is_xpu_available() -> bool:
+    return hasattr(torch, "xpu") and torch.xpu.is_available()
+
+def get_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    elif is_xpu_available():
+        return "xpu"
+    return "cpu"
+
 
 # #############################################################################
 # Regular PyTorch pipeline: nn.Module, train, test, and DataLoader
 # #############################################################################
 
 warnings.filterwarnings("ignore", category=UserWarning)
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = get_device()
 
-class Net(nn.Module):
-  """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
 
-  def __init__(self) -> None:
-    super(Net, self).__init__()
-    self.conv1 = nn.Conv2d(3, 6, 5)
-    self.pool = nn.MaxPool2d(2, 2)
-    self.conv2 = nn.Conv2d(6, 16, 5)
-    self.fc1 = nn.Linear(16 * 5 * 5, 120)
-    self.fc2 = nn.Linear(120, 84)
-    self.fc3 = nn.Linear(84, 10)
+class FashionSimpleNet(nn.Module):
 
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-    x = self.pool(F.relu(self.conv1(x)))
-    x = self.pool(F.relu(self.conv2(x)))
-    x = x.view(-1, 16 * 5 * 5)
-    x = F.relu(self.fc1(x))
-    x = F.relu(self.fc2(x))
-    return self.fc3(x)
+    """ Simple network"""
+
+    def __init__(self):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, padding=1), # 28
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2), # 14
+
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2) # 7
+        )
+        self.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(64 * 7 * 7, 128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, 10)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), 64 * 7 * 7)
+        x = self.classifier(x)
+        return x
+
 
 def train(net, trainloader, epochs):
   """Train the model on the training set."""
@@ -42,35 +70,49 @@ def train(net, trainloader, epochs):
   optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
   for _ in range(epochs):
     for images, labels in trainloader:
+      images, labels = images.to(DEVICE), labels.to(DEVICE)
       optimizer.zero_grad()
-      criterion(net(images.to(DEVICE)), labels.to(DEVICE)).backward()
+      loss = criterion(net(images), labels)
+      loss.backward()
       optimizer.step()
+
 
 def test(net, testloader):
   """Validate the model on the test set."""
   criterion = torch.nn.CrossEntropyLoss()
   correct, total, loss = 0, 0, 0.0
   with torch.no_grad():
-    for images, labels in testloader:
-      outputs = net(images.to(DEVICE))
-      loss += criterion(outputs, labels.to(DEVICE)).item()
+    for data in testloader:
+      images, labels = data[0].to(DEVICE), data[1].to(DEVICE)
+      outputs = net(images)
+      loss += criterion(outputs, labels).item()
+      _, predicted = torch.max(outputs.data, 1)
       total += labels.size(0)
-      correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
-  return loss / len(testloader.dataset), correct / total
+      correct += (predicted == labels).sum().item()
+  accuracy = correct / total
+  return loss, accuracy
+
 
 def load_data():
-  """Load CIFAR-10 (training and test set)."""
-  trf = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-  trainset = CIFAR10("./data", train=True, download=True, transform=trf)
-  testset = CIFAR10("./data", train=False, download=True, transform=trf)
-  return DataLoader(trainset, batch_size=32, shuffle=True), DataLoader(testset)
+  """Load FashionMNIST (training and test set)."""
+  batch_size = 32
+  trnasform = transforms.Compose([
+      transforms.ToTensor(),
+      transforms.Normalize((0.1307,), (0.3081,))
+  ])
+  trainset = datasets.FashionMNIST('./dataset', train=True, download=True, transform=trnasform)
+  valset = datasets.FashionMNIST('./dataset', train=False, download=True, transform=trnasform)
+  train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
+  val_loader = DataLoader(valset, batch_size=batch_size, shuffle=True)
+  return train_loader, val_loader
 
 # #############################################################################
 # Federating the pipeline with Flower
 # #############################################################################
 
+
 # Load model and data (simple CNN, CIFAR-10)
-net = Net().to(DEVICE)
+net = FashionSimpleNet().to(DEVICE)
 trainloader, testloader = load_data()
 
 # Define Flower client
@@ -86,12 +128,26 @@ class FlowerClient(fl.client.NumPyClient):
   def fit(self, parameters, config):
     self.set_parameters(parameters)
     train(net, trainloader, epochs=1)
-    return self.get_parameters(config={}), len(trainloader.dataset), {}
+    loss, accuracy = test(net, testloader)
+    metrics = {
+      'loss': float(loss),
+      'accuracy': float(accuracy)
+    }
+    return self.get_parameters(config={}), len(trainloader), metrics
 
   def evaluate(self, parameters, config):
     self.set_parameters(parameters)
     loss, accuracy = test(net, testloader)
-    return float(loss), len(testloader.dataset), {"accuracy": float(accuracy)}
+    print((loss, accuracy))
+    metrics = {
+      'loss': float(loss),
+      'accuracy': float(accuracy)
+    }
+    return float(loss), len(trainloader), metrics
+  
+  def save(self, parameters, path):
+    self.set_parameters(parameters)
+    torch.save(net.state_dict(), path)
 
 # Start Flower client
 fl.client.start_numpy_client(server_address="127.0.0.1:8080", client=FlowerClient())
