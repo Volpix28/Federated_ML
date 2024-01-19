@@ -18,7 +18,7 @@ class FashionTrainingStrategy(fl.server.strategy.FedAvg):
         on_evaluate_config_fn: Callable[[int], Dict[str, Scalar]] | None = None, 
         accept_failures: bool = True, initial_parameters: Parameters | None = None, 
         fit_metrics_aggregation_fn: MetricsAggregationFn | None = None, 
-        evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = None
+        evaluate_metrics_aggregation_fn: MetricsAggregationFn | None = run_driver_api
     ) -> None:
         if evaluate_metrics_aggregation_fn is None:
             evaluate_metrics_aggregation_fn = self.evaluate_metrics_aggregation_fn
@@ -78,5 +78,7 @@ hist = fl.server.start_server(
   config=fl.server.ServerConfig(num_rounds=num_rounds),
   strategy=stategy,
 )
+
+
 
 hist.metrics_distributed # { 'loss': [], 'accuracy': [] }
