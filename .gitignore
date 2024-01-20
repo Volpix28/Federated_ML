@@ -1,3 +1,4 @@
+
 # IDEs
 .idea/
 .vscode/
@@ -13,3 +14,7 @@ __pycache__
 # Datasets
 dataset
 
+# Logs
+logs/
+!logs/.gitignore
+client*.txt

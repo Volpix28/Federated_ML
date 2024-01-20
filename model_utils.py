@@ -1,3 +1,5 @@
+import os
+from typing import Sequence
 import numpy as np
 import copy
 import model as my_model
@@ -32,7 +34,37 @@ def set_model_weights(model, weights):
     # Set model weights
     model.set_weights(weights)
 
-def visualize_federated_learning_performance(cycles, average_train_accuracies, average_train_losses):
+
+def save_experiment_data(experiment_id: int, config: dict, metrics: dict):
+    """
+    Saves the data of an experiment into a csv file named experiments.csv, which contains columns for the experiment id, every parameter as well as metric.
+    :param experiment_id: ID of the experiment
+    :param config: Dictionary of parameters
+    :param metrics: Dictionary of metrics
+    """
+
+    # Create csv file if it does not exist
+    log_file = 'logs/experiments.csv'
+    os.makedirs(os.path.basename(log_file), exist_ok=True)
+    if not os.path.exists(log_file):
+        with open(log_file, 'w') as f:
+            f.write('id;')
+            f.write(';'.join(config.keys()))
+            f.write(';')
+            f.write(';'.join(metrics.keys()))
+            f.write('\n')
+
+    # Append experiment data to csv file
+    with open(log_file, 'a') as f:
+        f.write(str(experiment_id) + ';')
+        f.write(';'.join([str(value) for value in config.values()]))
+        f.write(';')
+        f.write(';'.join([str(value) for value in metrics.values()]))
+        f.write('\n')
+
+
+
+def visualize_federated_learning_performance(experiment_id: int, cycles: int, average_train_accuracies: Sequence[float], average_train_losses: Sequence[float]):
     """
     Visualize the performance of the federated learning model over the cycles.
     
@@ -47,20 +79,26 @@ def visualize_federated_learning_performance(cycles, average_train_accuracies, a
     # Plot average training accuracy
     plt.subplot(1, 2, 1)
     plt.plot(range(1, cycles + 1), average_train_accuracies, marker='o', color='b', label='Average Training Accuracy')
-    plt.title('Average Training Accuracy per Cycle')
+    plt.title(f'Experiment {experiment_id}: Average Training Accuracy per Cycle')
     plt.xlabel('Cycle')
     plt.ylabel('Accuracy')
+    plt.xticks(range(1, cycles + 1))  # Set x-axis ticks to integer values
     plt.grid(True)
     plt.legend()
 
     # Plot average training loss
     plt.subplot(1, 2, 2)
     plt.plot(range(1, cycles + 1), average_train_losses, marker='o', color='r', label='Average Training Loss')
-    plt.title('Average Training Loss per Cycle')
+    plt.title('Experiment {experiment_id}: Average Training Loss per Cycle')
     plt.xlabel('Cycle')
     plt.ylabel('Loss')
+    plt.xticks(range(1, cycles + 1))  # Set x-axis ticks to integer values
     plt.grid(True)
     plt.legend()
 
     plt.tight_layout()
-    plt.show()
+
+    # save as png file
+    out_path = f'logs/experiment_{experiment_id}'
+    os.makedirs(out_path, exist_ok=True)
+    plt.savefig(f'{out_path}/performance.png')
