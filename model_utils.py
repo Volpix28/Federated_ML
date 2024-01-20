@@ -89,7 +89,7 @@ def visualize_federated_learning_performance(experiment_id: int, cycles: int, av
     # Plot average training loss
     plt.subplot(1, 2, 2)
     plt.plot(range(1, cycles + 1), average_train_losses, marker='o', color='r', label='Average Training Loss')
-    plt.title('Experiment {experiment_id}: Average Training Loss per Cycle')
+    plt.title(f'Experiment {experiment_id}: Average Training Loss per Cycle')
     plt.xlabel('Cycle')
     plt.ylabel('Loss')
     plt.xticks(range(1, cycles + 1))  # Set x-axis ticks to integer values
