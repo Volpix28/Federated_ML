@@ -117,7 +117,7 @@ def test(net, testloader):
   return loss, accuracy
 
 
-def load_data(client_id: int, percent: Optional[float] = 1.0):
+def load_data(client_id: int, percent: Optional[float] = 1.0, class_distribution: Optional[dict] = None):
   """
   Load FashionMNIST (training and test set).
   :param client_id: ID of the client
