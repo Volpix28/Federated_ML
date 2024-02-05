@@ -309,10 +309,10 @@ config_template = {
 
 # Select experiment to run
 experiment_executed = [
-    *['experiment_4'for _ in range(3)]
-    *['experiment_10'for _ in range(5)]
-    *['experiment_11'for _ in range(5)]
-    *['experiment_12'for _ in range(5)]
+    *['experiment_4' for _ in range(3)],
+    *['experiment_10' for _ in range(5)],
+    *['experiment_11' for _ in range(5)],
+    *['experiment_12' for _ in range(5)],
 ]
 for experiment_name in experiment_executed:
     experiment = experiments[experiment_name]
