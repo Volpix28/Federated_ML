@@ -1,4 +1,5 @@
 import itertools
+import json
 import os
 import random
 import time
@@ -77,9 +78,12 @@ class FashionTrainingStrategy(fl.server.strategy.FedAvg):
         :return: Aggregated evaluation result.
         """
 
+        skip_metrics = [ 'class_distribution', 'class_wise_accuracy' ]
+
         metric_list = {}
         for _, metrics in evaluate_res:
             for key, value in metrics.items():
+                if key in skip_metrics: continue
                 if key not in metric_list:
                     metric_list[key] = []
                 metric_list[key].append(value)
@@ -87,6 +91,27 @@ class FashionTrainingStrategy(fl.server.strategy.FedAvg):
         # Compute mean loss and accuracy
         for key, value in metric_list.items():
             metric_list[key] = sum(value) / len(value)
+
+        # Evaluate class distribution accuracy
+        class_wise_accuracy = {}
+        for _, metrics in evaluate_res:
+            class_wise_accuracy_client = json.loads(metrics['class_wise_accuracy'])
+            for key, value in class_wise_accuracy_client.items():
+                if key not in class_wise_accuracy:
+                    class_wise_accuracy[key] = []
+                class_wise_accuracy[key].append(value)
+        
+        # Compute mean class wise accuracy
+        for key, value in class_wise_accuracy.items():
+            class_wise_accuracy[key] = sum(value) / len(value)
+
+        metric_list['class_wise_accuracy'] = class_wise_accuracy
+        
+        #metric_list['class_distribution'] = {}
+        #metric_list['class_wise_accuracy'] = {}
+        #TODO debug and save all class wise accuracy
+        #print()
+
         return metric_list
 
 
@@ -115,7 +140,8 @@ experiments = {
         'rang_num_clients': range(2, 20, 2),
         'rang_num_rounds': range(1, 20, 2),
         'rang_num_local_epochs': range(1, 20, 2),
-        'data_distribution': ['uniform']
+        'data_distribution': ['uniform'],
+        'class_distibution': ['uniform']
     },
     # Experiment 2
     #  Same as experiment 1 but with less variance in the parameters
@@ -126,7 +152,8 @@ experiments = {
         'rang_num_clients': [2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
         'rang_num_rounds': [5, 10],
         'rang_num_local_epochs': [10],
-        'data_distribution': ['uniform']
+        'data_distribution': ['uniform'],
+        'class_distibution': ['uniform']
     },
     # Experiment 3
     #  Changed minimal client number to num_clients
@@ -134,7 +161,8 @@ experiments = {
         'rang_num_clients': [2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
         'rang_num_rounds': [5, 10],
         'rang_num_local_epochs': [10],
-        'data_distribution': ['uniform']
+        'data_distribution': ['uniform'],
+        'class_distibution': ['uniform']
     },
     # Experiment 4
     #  Tested best parameters from all experiments
@@ -142,7 +170,8 @@ experiments = {
         'rang_num_clients': [5],
         'rang_num_rounds': [10],
         'rang_num_local_epochs': [5],
-        'data_distribution': ['uniform']
+        'data_distribution': ['uniform'],
+        'class_distibution': ['uniform']
     },
 
     # Experiment 5
@@ -151,7 +180,8 @@ experiments = {
         'rang_num_clients': [2, 5, 10],
         'rang_num_rounds': [10],
         'rang_num_local_epochs': [5],
-        'data_distribution': ['uniform']
+        'data_distribution': ['uniform'],
+        'class_distibution': ['uniform']
     },
 
     # Experiment 6
@@ -162,7 +192,8 @@ experiments = {
         'rang_num_local_epochs': [5],
         'data_distribution': [ 
             [ 0.8, 0.1, 0.1 ],
-         ]
+         ],
+        'class_distibution': ['uniform']
     },
     'experiment_7': {
         'rang_num_clients': [5],
@@ -170,7 +201,8 @@ experiments = {
         'rang_num_local_epochs': [5],
         'data_distribution': [ 
             [ 0.8, 0.05, 0.05, 0.05, 0.05 ],
-        ]
+        ],
+        'class_distibution': ['uniform']
     },
     'experiment_8': {
         'rang_num_clients': [5],
@@ -178,7 +210,8 @@ experiments = {
         'rang_num_local_epochs': [5],
         'data_distribution': [
             [ 0.3, 0.1, 0.1, 0.3, 0.2 ],
-        ]
+        ],
+        'class_distibution': ['uniform']
     },
     'experiment_9': {
         'rang_num_clients': [5],
@@ -186,16 +219,34 @@ experiments = {
         'rang_num_local_epochs': [5],
         'data_distribution': [
             [ 0.2, 0.2, 0.2, 0.2, 0.2 ],
+        ],
+        'class_distibution': ['uniform']
+    },
+
+    'experiment_10': {
+        'rang_num_clients': [5],
+        'rang_num_rounds': [10],
+        'rang_num_local_epochs': [5],
+        'data_distribution': ['uniform'],
+        'class_distibution': [ 
+            [
+                { '0': 0.1, '1': 0.1, '2': 0.1, '3': 0.1, '4': 0.1, '5': 0.1, '6': 0.1, '7': 0.1, '8': 0.1, '9': 0.1 },
+                { '0': 0.1, '1': 0.9, '2': 0.1, '3': 0.1, '4': 0.1, '5': 0.1, '6': 0.1, '7': 0.1, '8': 0.1, '9': 0.1 },
+                { '0': 0.1, '1': 0.1, '2': 0.1, '3': 0.1, '4': 0.9, '5': 0.1, '6': 0.1, '7': 0.1, '8': 0.1, '9': 0.1 },
+                { '0': 0.1, '1': 0.1, '2': 0.1, '3': 0.1, '4': 0.1, '5': 0.1, '6': 0.1, '7': 0.1, '8': 0.9, '9': 0.1 },
+                { '0': 0.1, '1': 0.1, '2': 0.1, '3': 0.1, '4': 0.1, '5': 0.1, '6': 0.1, '7': 0.1, '8': 0.1, '9': 0.1 },
+            ]
         ]
     },
 }
 
 # Select experiment to run
-experiment_executed = [ 
+experiment_executed = [
+    *['experiment_10'for _ in range(3)]
+    #*['experiment_4'for _ in range(5)],
     #*['experiment_6'for _ in range(5)],
     #*['experiment_7'for _ in range(5)],
     #*['experiment_8'for _ in range(5)],
-    'experiment_4'
 ]
 for experiment_name in experiment_executed:
     experiment = experiments[experiment_name]
@@ -210,8 +261,9 @@ for experiment_name in experiment_executed:
     log(INFO, "Experiment: {}".format(CURR_EXPERIMENT))
     log(DEBUG, "Starting with experiment id: {}".format(start_experiment_id))
     log(DEBUG, "Number of parameter combinations: {}".format(len(param_grid)))
+    start_time = time.time()
     for i, params in enumerate(param_grid):
-        num_clients, num_rounds, num_local_epochs, data_distribution, *_ = params
+        num_clients, num_rounds, num_local_epochs, data_distribution, class_distibution, *_ = params
         log(DEBUG, "Parameter combination {}: {}".format(i, params))
 
         # Define parameter
@@ -222,6 +274,7 @@ for experiment_name in experiment_executed:
             'num_rounds': num_rounds,
             'num_local_epochs': num_local_epochs,
             'data_distribution': data_distribution,
+            'class_distibution': class_distibution
         }
 
         num_rounds = config["num_rounds"]
@@ -230,6 +283,8 @@ for experiment_name in experiment_executed:
         if config["data_distribution"] == 'uniform':
             data_distribution = [1.0 / num_clients for _ in range(num_clients)]
             config["data_distribution"] = data_distribution
+        if config["class_distibution"] == 'uniform':
+            config["class_distibution"] = [None for _ in range(num_clients)]
         
 
         # Set seed
@@ -248,18 +303,19 @@ for experiment_name in experiment_executed:
 
 
 
-        command = ".venv/bin/python flower_client.py --client_id {} --seed {} --perc_data {}"
+        command = ".venv/bin/python flower_client.py --client_id {} --seed {} --perc_data {} --class_distibution '{}'"
         client_processes = []
         unbalanced_distribution = [(0.7, 0.9)]
+        min_data_dist = (1 / num_clients) * 0.8
         client_data_id_map = torch.randperm(num_clients)
-        min_data_dist = (1 / num_clients) * 0.8 
         data_perc_sum = 0
 
         def run_client(client_id, command, config={}):
             # Resolve data distribution for this client
+            client_data_id = client_data_id_map[client_id].item()
             perc_data = 1
             if type(data_distribution) == list:
-                perc_data = 1
+                perc_data = data_distribution[client_data_id]
 
             elif data_distribution == 'unbalanced':
                 client_data_id = client_data_id_map[client_id]
@@ -274,8 +330,13 @@ for experiment_name in experiment_executed:
                     perc_data = available_range * (random.random() if client_id < num_clients-1 else 1)
                 data_perc_sum += perc_data
 
+            # Data Class distribution
+            dist = class_distibution
+            if type(class_distibution) == list:
+                dist = class_distibution[client_data_id]
+
             # Start client
-            client_command = command.format(client_id, config['seed'], perc_data)
+            client_command = command.format(client_id, config['seed'], perc_data, json.dumps(dist))
             process = subprocess.Popen(client_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
             log(DEBUG, "Client {} started with command {}".format(i, client_command))
 
@@ -291,12 +352,18 @@ for experiment_name in experiment_executed:
             process.wait()
 
         def run_server(experiment_id, num_rounds):
+            attr_filter = [ 'seed', 'num_clients', 'num_rounds', 'num_local_epochs' ]
+            server_config = config.copy()
+            for it in list(server_config.keys()):
+                if not it in attr_filter:
+                    del server_config[it]
+
             # Define Flower strategy
             stategy = FashionTrainingStrategy(
                 min_fit_clients=num_clients,
                 min_evaluate_clients=num_clients,
                 min_available_clients=num_clients,
-                on_fit_config_fn=lambda _: config,
+                on_fit_config_fn=lambda _: server_config,
             )
 
             # Start Flower server
@@ -305,10 +372,16 @@ for experiment_name in experiment_executed:
                 config=fl.server.ServerConfig(num_rounds=num_rounds),
                 strategy=stategy,
             )
+            end_time = time.time()
 
             # Sav logs
             raw_metrics = { metric_name: [it[1] for it in values] for metric_name, values in hist.metrics_distributed.items() }
-            save_experiment_data(experiment_id, config, raw_metrics)
+            save_experiment_data(experiment_id, {
+                'experiment_name': experiment_name,
+                'start_time': start_time, 
+                'end_time': end_time,
+                **config
+            }, raw_metrics)
 
             # Visualize training performance
             visualize_federated_learning_performance(

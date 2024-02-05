@@ -2,6 +2,8 @@ import os
 from typing import Sequence
 import numpy as np
 import copy
+
+import pandas as pd
 import model as my_model
 import torch
 import matplotlib.pyplot as plt
@@ -46,6 +48,17 @@ def save_experiment_data(experiment_id: int, config: dict, metrics: dict):
             f.write(';')
             f.write(';'.join(metrics.keys()))
             f.write('\n')
+    else:
+        df = pd.read_csv(log_file, delimiter=';')
+        new_columns = ['id'] + list(config.keys()) + list(metrics.keys())
+        if not df.columns.tolist() == new_columns:
+            for column in new_columns:
+                if column not in df.columns:
+                    df[column] = np.nan
+        
+        # sort columns and save
+        df = df[new_columns]
+        df.to_csv(log_file, index=False, sep=';')
 
     # Append experiment data to csv file
     with open(log_file, 'a') as f:

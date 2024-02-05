@@ -1,6 +1,8 @@
+from ast import Dict
 from collections import OrderedDict
 import argparse
-from typing import Optional
+import json
+from typing import Dict, Iterator, Optional, Sequence
 import warnings
 
 import flwr as fl
@@ -10,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import datasets, models, transforms
-from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch.utils.data import DataLoader, SubsetRandomSampler, Sampler
 from torchvision.datasets import CIFAR10
 from collections import OrderedDict
 
@@ -37,6 +39,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--client_id', type=int, default=0, help="Client ID")
 parser.add_argument("--seed", type=int, default=42, help="Seed value")
 parser.add_argument('--perc_data', type=float, default=1, help="Percentage of data to use")
+parser.add_argument('--class_distibution', type=json.loads, default=None, help="Class distribution of the data") # type: Dict[str, float]
 
 # Parse command-line arguments
 args = parser.parse_args()
@@ -116,6 +119,58 @@ def test(net, testloader):
   accuracy = correct / total
   return loss, accuracy
 
+def evaluate(net, testloader, class_distribution: Optional[Dict[str, int]] = None):
+  """Validate the model on the test set."""
+  criterion = torch.nn.CrossEntropyLoss()
+  class_wise_total = get_class_distribution(testloader.dataset) if class_distribution is None else class_distribution
+  correct, total, loss = 0, 0, 0.0
+  class_wise_accuracy = {}
+  with torch.no_grad():
+    for data in testloader:
+      images, labels = data[0].to(DEVICE), data[1].to(DEVICE)
+      outputs = net(images)
+      loss += criterion(outputs, labels).item()
+      _, predicted = torch.max(outputs.data, 1)
+      total += labels.size(0)
+
+      correct_tensor = (predicted == labels)
+      correct_indices = correct_tensor.nonzero()
+      for i in correct_indices:
+        label = str(labels[i].item())
+        class_wise_accuracy[label] = class_wise_accuracy.get(label, 0) + 1
+      correct += correct_tensor.sum().item()
+  
+  class_wise_accuracy = {k: v/class_wise_total[k] for k, v in class_wise_accuracy.items()}
+  accuracy = correct / total
+  return loss, accuracy, class_wise_accuracy
+
+
+def get_class_distribution(dataset):
+  class_distribution = {}
+  for it in dataset:
+    label = str(it[1])
+    if label not in class_distribution:
+      class_distribution[label] = 0
+    class_distribution[label] += 1
+  return class_distribution
+
+def sampled_indices_for_a_given_distribution(dataset, class_distribution: Dict[str, float]):
+  # Gather class distribution
+  class_indices = {}
+  for i, it in enumerate(dataset):
+      label = str(it[1])
+      if label not in class_indices:
+          class_indices[label] = []
+      class_indices[label].append(i)
+  class_indices = {k: torch.tensor(v) for k, v in class_indices.items()}
+
+  for c in class_distribution:
+    if c not in class_indices:
+      raise ValueError(f"Class {c} not in the dataset.")
+
+  sampled_per_class = { k: v[torch.randperm(len(v))[:(int(len(v)*class_distribution[k]))]] for k, v in class_indices.items() }
+  return torch.cat([v for v in sampled_per_class.values()])
+
 
 def load_data(client_id: int, percent: Optional[float] = 1.0, class_distribution: Optional[dict] = None):
   """
@@ -134,7 +189,13 @@ def load_data(client_id: int, percent: Optional[float] = 1.0, class_distribution
   samples = len(trainset)
   print(f"Total number of samples: {samples}")
   print(f"Percentage of samples: {percent}")
-  train_sampler = SubsetRandomSampler(torch.randperm(len(trainset))[:(int(samples*percent))])
+  print(f"Class distribution: {class_distribution}")
+
+  if class_distribution is None:
+     sample_indices = torch.randperm(len(trainset))[:(int(samples*percent))]
+  else:
+     sample_indices = sampled_indices_for_a_given_distribution(trainset, class_distribution)
+  train_sampler = SubsetRandomSampler(sample_indices)
 
   # Only distributed the training data not the validation data.
   train_loader = DataLoader(trainset, batch_size=batch_size, sampler=train_sampler)
@@ -148,7 +209,8 @@ def load_data(client_id: int, percent: Optional[float] = 1.0, class_distribution
 
 # Load model and data (simple CNN, CIFAR-10)
 net = FashionSimpleNet().to(DEVICE)
-trainloader, testloader = load_data(args.client_id, args.perc_data)
+trainloader, testloader = load_data(args.client_id, args.perc_data, args.class_distibution)
+trainingset_class_distribution = get_class_distribution(trainloader.dataset)
 
 # Define Flower client
 class FlowerClient(fl.client.NumPyClient):
@@ -173,10 +235,12 @@ class FlowerClient(fl.client.NumPyClient):
 
   def evaluate(self, parameters, config):
     self.set_parameters(parameters)
-    loss, accuracy = test(net, testloader)
+    loss, accuracy, class_wise_accuracy = evaluate(net, testloader, class_distribution=trainingset_class_distribution)
     metrics = {
       'loss': float(loss),
-      'accuracy': float(accuracy)
+      'accuracy': float(accuracy),
+      'class_distribution': json.dumps(trainingset_class_distribution),
+      'class_wise_accuracy': json.dumps(class_wise_accuracy),
     }
     return float(loss), len(trainloader), metrics
   
