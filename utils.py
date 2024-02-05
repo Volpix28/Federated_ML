@@ -2,6 +2,8 @@ import os
 from typing import Sequence
 import numpy as np
 import copy
+
+import pandas as pd
 import model as my_model
 import torch
 import matplotlib.pyplot as plt
@@ -26,13 +28,6 @@ def save_model(model, save_path):
     # Implement model saving logic
     torch.save(model.state_dict(), save_path)
 
-def get_model_weights(model):
-    # Retrieve model weights
-    return model.get_weights()
-
-def set_model_weights(model, weights):
-    # Set model weights
-    model.set_weights(weights)
 
 
 def save_experiment_data(experiment_id: int, config: dict, metrics: dict):
@@ -45,7 +40,7 @@ def save_experiment_data(experiment_id: int, config: dict, metrics: dict):
 
     # Create csv file if it does not exist
     log_file = 'logs/experiments.csv'
-    os.makedirs(os.path.basename(log_file), exist_ok=True)
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
             f.write('id;')
@@ -53,6 +48,17 @@ def save_experiment_data(experiment_id: int, config: dict, metrics: dict):
             f.write(';')
             f.write(';'.join(metrics.keys()))
             f.write('\n')
+    else:
+        df = pd.read_csv(log_file, delimiter=';')
+        new_columns = ['id'] + list(config.keys()) + list(metrics.keys())
+        if not df.columns.tolist() == new_columns:
+            for column in new_columns:
+                if column not in df.columns:
+                    df[column] = np.nan
+        
+        # sort columns and save
+        df = df[new_columns]
+        df.to_csv(log_file, index=False, sep=';')
 
     # Append experiment data to csv file
     with open(log_file, 'a') as f:
@@ -99,6 +105,6 @@ def visualize_federated_learning_performance(experiment_id: int, cycles: int, av
     plt.tight_layout()
 
     # save as png file
-    out_path = f'logs/experiment_{experiment_id}'
+    out_path = f'logs/figures'
     os.makedirs(out_path, exist_ok=True)
-    plt.savefig(f'{out_path}/performance.png')
+    plt.savefig(f'{out_path}/experiment_{experiment_id}.png')
